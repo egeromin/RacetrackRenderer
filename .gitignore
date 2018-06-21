@@ -1,5 +1,6 @@
 
 /target
 **/*.rs.bk
-racetrack.values
+*.values
+*.swp
 
