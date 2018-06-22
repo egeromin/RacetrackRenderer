@@ -1,5 +1,10 @@
 extern crate pxl;
+extern crate rand;
 use pxl::*;
+
+// use rand::prelude::*;
+use rand::{Rng, thread_rng};
+
 
 const RACETRACK: &[u8] = include_bytes!("../racetrack.values");
 const EPISODE: &[u8] = include_bytes!("../episode.values");
@@ -97,10 +102,11 @@ impl Program for Game {
 
         if self.tick % TICKS_PER_SECOND == 0 {
             // let (x, y) = EPISODE[2*self.episode_num: 2*self.episode_num+1]
-            let x = (EPISODE[2 * self.episode_num] - 1) as usize;
-            let y = (EPISODE[2 * self.episode_num + 1] - 1) as usize;
+            // let x = (EPISODE[2 * self.episode_num] - 1) as usize;
+            // let y = (EPISODE[2 * self.episode_num + 1] - 1) as usize;
 
-            self.track[50 * y + x] = Boundary;
+            // self.track[50 * y + x] = Boundary;
+            self.track[random_start(&self.start_positions)] = Boundary;
             self.episode_num = (self.episode_num + 1) % (EPISODE.len() / 2);
 
             if self.episode_num == 0 {
@@ -115,13 +121,16 @@ impl Program for Game {
         }
     }
 
-    // fn next_state(&mut self) {
-    //     return self.random_start();
-    // }
-
-    // fn random_start(&mut self) {
-    // }
 }
+
+
+fn random_start(start_positions: &Vec<usize>) -> usize {
+    let mut rng = thread_rng();
+    let rand_index: usize = rng.gen_range(0, start_positions.len());
+    return start_positions[rand_index];
+}
+
+
 
 fn main() {
     run::<Game>();
