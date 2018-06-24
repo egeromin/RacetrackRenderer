@@ -97,7 +97,7 @@ impl Program for Game {
 
         let start_positions: Vec<(i32, i32)> = iproduct!(0..50, 0..50)
             .into_iter()
-            .filter(|&i| track[(i.0 + i.1 * 50) as usize] == Beginning)
+            .filter(|&i| lookup_track(&track, i) == Beginning)
             .collect();
 
         let mut reader = Cursor::new(QVALS);
@@ -247,7 +247,7 @@ fn greedy_action(qvalues: &Vec<f64>, state: GameState) -> Action {
     let actions: Vec<_> = iproduct!(-1..2, -1..2)
         .map(Action::from_tuple)
         .collect();
-    let mut best_action = actions[0];
+    let mut best_action = Action{xacc:0, yacc:0};
     let mut max_qvalue = std::f64::NEG_INFINITY;
     for action in actions {
         let qvalue = get_qvalue(qvalues, state, action);
