@@ -130,7 +130,7 @@ impl Program for Game {
             episode_num: 0,
             tick: 0,
             state: start_state(),
-            history: vec![start_state().position]
+            history: vec![]
         }
     }
 
@@ -170,15 +170,16 @@ impl Program for Game {
             if self.state.ended {
                 self.state = random_start(&self.start_positions);
                 self.history = vec![];
-                    
+                self.history.push(self.state.position);
             } else {
                 let action = greedy_action(&self.qvalues, self.state);
+                println!("selected action {}, {}", action.xacc, action.yacc);
                 self.state = next_state(&self.track, self.state, action);
                 self.history.push(self.state.position);
             }
 
-            println!("state: {}, {}", self.state.position.0,
-                     self.state.position.1);
+            // println!("state: {}, {}", self.state.position.0,
+            //          self.state.position.1);
             if self.state.ended {
                 println!("Ended with outcome {}", self.state.success);
             }
@@ -243,13 +244,14 @@ fn get_qvalue(qvalues: &Vec<f64>, state: GameState,
 
 
 fn greedy_action(qvalues: &Vec<f64>, state: GameState) -> Action {
-    let actions: Vec<_> = iproduct!(-1..1, -1..1)
+    let actions: Vec<_> = iproduct!(-1..2, -1..2)
         .map(Action::from_tuple)
         .collect();
     let mut best_action = actions[0];
-    let mut max_qvalue = 0.0;
+    let mut max_qvalue = std::f64::NEG_INFINITY;
     for action in actions {
         let qvalue = get_qvalue(qvalues, state, action);
+        // println!("qvalue: {}", qvalue);
         if qvalue > max_qvalue {
             max_qvalue = qvalue;
             best_action = action;
@@ -264,15 +266,32 @@ fn int_tup_from_float(tup: (f64, f64)) -> (i32, i32) {
 }
 
 
+fn lookup_track(track: &Vec<TrackPoint>,
+                pos: (i32, i32)) -> TrackPoint {
+    let pos_ind = (pos.0 + 50*pos.1) as usize;
+    track[pos_ind]
+}
+
+
+fn check_bounds(x: i32) -> i32 {
+    std::cmp::max(std::cmp::min(x, 5), -5)
+}
+
+
+fn update_velocity(velocity: (i32, i32),
+                   action: Action) -> (i32, i32) {
+    (check_bounds(velocity.0 + action.xacc),
+     check_bounds(velocity.1 + action.yacc))
+}
+
+
 fn next_state(track: &Vec<TrackPoint>,
               state: GameState, action: Action) -> GameState {
 
     // let current_position = <(f64, f64)>::from(state.velocity);// as (f32, f32);
     let mut pos: (i32, i32) = state.position;
-    let new_velocity = (state.velocity.0 + action.xacc,
-                        state.velocity.1 + action.yacc);  // terser version?
+    let new_velocity = update_velocity(state.velocity, action);
     let mut current_position = (pos.0 as f64, pos.1 as f64);
-    let mut pos_ind = (pos.0 + 50*pos.1) as usize;
     for _ in 0..5 {
         // current_position 
         current_position = (
@@ -292,9 +311,9 @@ fn next_state(track: &Vec<TrackPoint>,
             };
         }
 
-        pos_ind = (pos.0 + 50*pos.1) as usize;
+        let track_value = lookup_track(track, pos);
 
-        if track[pos_ind] == End {
+        if track_value == End {
             return GameState{
                 position: (0, 0),
                 velocity: (0, 0),
@@ -302,10 +321,10 @@ fn next_state(track: &Vec<TrackPoint>,
                 success: true
             };
         }
-        else if track[pos_ind] == Beginning || track[pos_ind] == Boundary {
+        else if track_value == Beginning || track_value == Boundary {
             return GameState{
                 position: (0, 0),
-                velocity: new_velocity,
+                velocity: (0, 0),
                 ended: true,
                 success: false
             };
