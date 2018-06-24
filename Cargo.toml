@@ -6,4 +6,6 @@ authors = ["Emanuel Geromin <egeromin@gmail.com>"]
 [dependencies]
 pxl="0.0.2"
 rand="0.5.2"
+byteorder="1.2.3"
+itertools="0.7.8"
 

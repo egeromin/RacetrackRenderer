@@ -1,13 +1,20 @@
 extern crate pxl;
 extern crate rand;
+extern crate byteorder;
+#[macro_use] extern crate itertools;
 use pxl::*;
 
-// use rand::prelude::*;
 use rand::{Rng, thread_rng};
+use std::io::Cursor;
+use byteorder::{NativeEndian, ReadBytesExt};
+// use itertools::Itertools;
 
 
 const RACETRACK: &[u8] = include_bytes!("../racetrack.values");
 const EPISODE: &[u8] = include_bytes!("../episode.values");
+const QVALS: &[u8] = include_bytes!("../q.values");
+
+
 const TICKS_PER_SECOND: u32 = 60;
 // const NUM_EPISODES: usize = EPISODE.len() / 2;
 
@@ -18,6 +25,7 @@ enum TrackPoint {
     Beginning,
     Empty,
 }
+
 
 use TrackPoint::*;
 impl TrackPoint {
@@ -59,10 +67,24 @@ impl TrackPoint {
 
 struct Game {
     track: Vec<TrackPoint>,
-    start_positions: Vec<usize>,
+    start_positions: Vec<(i32, i32)>,
     episode_num: usize,
     tick: u32,
+    qvalues: Vec<f64>,
+    state: GameState,
+    history: Vec<(i32, i32)>
 }
+
+
+fn start_state()-> GameState {
+    GameState{
+        position: (0, 0),
+        velocity: (0, 0),
+        ended: true,
+        success: true
+    }
+}
+
 
 impl Program for Game {
     fn new() -> Game {
@@ -72,15 +94,26 @@ impl Program for Game {
             .cloned()
             .map(TrackPoint::from_byte)
             .collect::<Vec<TrackPoint>>();
-        let start_positions = (0 as usize..2500 as usize)
+        let start_positions = iproduct!(0..50, 0..50)
             .into_iter()
-            .filter(|&i| track[i] == Beginning)
+            .filter(|&i| track[(i.0 + i.1 * 50) as usize] == Beginning)
             .collect();
+
+        let mut reader = Cursor::new(QVALS);
+
+        let mut qvalues = vec![] as Vec<f64>;
+        for i in 0..(QVALS.len()/8) {
+            qvalues.push(reader.read_f64::<NativeEndian>().unwrap());
+        }  // MUST IMPROVE
+
         Game {
             track,
             start_positions,
+            qvalues,
             episode_num: 0,
             tick: 0,
+            state: start_state(),
+            history: vec![start_state().position]
         }
     }
 
@@ -95,6 +128,9 @@ impl Program for Game {
                 }
             }
         }
+        // for pos in &self.history {
+        //     pixels[pos] = Boundary.pixel();
+        // }
     }
 
     fn tick(&mut self, _events: &[Event]) {
@@ -106,32 +142,164 @@ impl Program for Game {
             // let y = (EPISODE[2 * self.episode_num + 1] - 1) as usize;
 
             // self.track[50 * y + x] = Boundary;
-            self.track[random_start(&self.start_positions)] = Boundary;
-            self.episode_num = (self.episode_num + 1) % (EPISODE.len() / 2);
+            //
 
-            if self.episode_num == 0 {
-                self.track = RACETRACK
-                    .iter()
-                    .cloned()
-                    .map(TrackPoint::from_byte)
-                    .collect();
+            if self.state.ended {
+                self.state = random_start(&self.start_positions);
+                self.history = vec![];
+                    
+            } else {
+                let action = greedy_action(&self.qvalues, self.state);
+                self.state = next_state(&self.track, self.state, action);
+                self.history.push(self.state.position);
             }
 
-            self.tick = 0;
+            println!("state: {}, {}", self.state.position.0,
+                     self.state.position.1);
+            if self.state.ended {
+                println!("Ended with outcome {}", self.state.success);
+            }
+            
+            // self.track[random_start(&self.start_positions)] = Boundary;
+            // self.episode_num = (self.episode_num + 1) % (EPISODE.len() / 2);
+
+            // if self.episode_num == 0 {
+            //     self.track = RACETRACK
+            //         .iter()
+            //         .cloned()
+            //         .map(TrackPoint::from_byte)
+            //         .collect();
+            // }
+
+            // self.tick = 0;
+        }
+    }
+}
+
+
+#[derive(Copy, Clone)]
+struct GameState {
+    position: (i32, i32),
+    velocity: (i32, i32),
+    ended: bool,
+    success: bool
+}
+
+
+#[derive(Copy, Clone)]
+struct Action {
+    xacc: i32,
+    yacc: i32
+}
+
+
+impl Action {
+    fn from_tuple(a: (i32, i32)) -> Action {
+        Action{xacc: a.0, yacc: a.1}
+    }
+}
+
+
+fn random_start(start_positions: &Vec<(i32, i32)>) -> GameState {
+    let mut rng = thread_rng();
+    let rand_index: usize = rng.gen_range(0, start_positions.len());
+    return GameState{
+        position: start_positions[rand_index],
+        velocity: (0, 0),
+        ended: false,
+        success: false};
+}
+
+
+fn get_qvalue(qvalues: &Vec<f64>, state: GameState, 
+              action: Action) -> f64 {
+    let pos = state.position.0 + 50*state.position.1 + 50*50*(action.xacc+1) + 
+        50*50*3*(action.yacc+1 );
+    return qvalues[pos as usize];
+}
+
+
+fn greedy_action(qvalues: &Vec<f64>, state: GameState) -> Action {
+    let actions: Vec<_> = iproduct!(-1..1, -1..1)
+        .map(Action::from_tuple)
+        .collect();
+    let mut best_action = actions[0];
+    let mut max_qvalue = 0.0;
+    for action in actions {
+        let qvalue = get_qvalue(qvalues, state, action);
+        if qvalue > max_qvalue {
+            max_qvalue = qvalue;
+            best_action = action;
+        }
+    }
+    return best_action;
+}
+
+
+fn int_tup_from_float(tup: (f64, f64)) -> (i32, i32) {
+    return (tup.0 as i32, tup.1 as i32);
+}
+
+
+fn next_state(track: &Vec<TrackPoint>,
+              state: GameState, action: Action) -> GameState {
+
+    // let current_position = <(f64, f64)>::from(state.velocity);// as (f32, f32);
+    let mut pos: (i32, i32) = state.position;
+    let new_velocity = (state.velocity.0 + action.xacc,
+                        state.velocity.1 + action.yacc);  // terser version?
+    let mut current_position = (pos.0 as f64, pos.1 as f64);
+    let mut pos_ind = (pos.0 + 50*pos.1) as usize;
+    for _ in 0..5 {
+        // current_position 
+        current_position = (
+            current_position.0 + 0.2 * (new_velocity.0 as f64),
+            current_position.1 + 0.2 * (new_velocity.1 as f64)
+        );
+
+        pos = int_tup_from_float(current_position);
+
+        if std::cmp::max(pos.0, pos.1) >= 50 || 
+           std::cmp::min(pos.0, pos.1) < 0 {
+            return GameState{
+                position: (0, 0),
+                velocity: (0, 0),
+                ended: true,
+                success: false
+            };
+        }
+
+        pos_ind = (pos.0 + 50*pos.1) as usize;
+
+        if track[pos_ind] == End {
+            return GameState{
+                position: (0, 0),
+                velocity: (0, 0),
+                ended: true,
+                success: true
+            };
+        }
+        else if track[pos_ind] == Beginning || track[pos_ind] == Boundary {
+            return GameState{
+                position: (0, 0),
+                velocity: new_velocity,
+                ended: true,
+                success: false
+            };
         }
     }
 
+    return GameState{
+        position: pos,
+        velocity: new_velocity,
+        ended: false,
+        success: false
+    };
 }
-
-
-fn random_start(start_positions: &Vec<usize>) -> usize {
-    let mut rng = thread_rng();
-    let rand_index: usize = rng.gen_range(0, start_positions.len());
-    return start_positions[rand_index];
-}
-
 
 
 fn main() {
     run::<Game>();
 }
+
+
