@@ -94,7 +94,8 @@ impl Program for Game {
             .cloned()
             .map(TrackPoint::from_byte)
             .collect::<Vec<TrackPoint>>();
-        let start_positions = iproduct!(0..50, 0..50)
+
+        let start_positions: Vec<(i32, i32)> = iproduct!(0..50, 0..50)
             .into_iter()
             .filter(|&i| track[(i.0 + i.1 * 50) as usize] == Beginning)
             .collect();
@@ -105,6 +106,22 @@ impl Program for Game {
         for i in 0..(QVALS.len()/8) {
             qvalues.push(reader.read_f64::<NativeEndian>().unwrap());
         }  // MUST IMPROVE
+
+        for i in &start_positions { 
+            let somestate = GameState{
+                position: *i,
+                velocity: (0, 0),
+                ended: false,
+                success: false
+                };
+            let action = Action{xacc: 1, yacc: 0};
+            println!("({}, {}, {}, {}): {}", 
+                     somestate.position.0,
+                     somestate.position.1,
+                     action.xacc,
+                     action.yacc,
+                     get_qvalue(&qvalues, somestate, action));
+        }
 
         Game {
             track,
@@ -128,9 +145,15 @@ impl Program for Game {
                 }
             }
         }
-        // for pos in &self.history {
-        //     pixels[pos] = Boundary.pixel();
-        // }
+        for (x, y) in &self.history {
+            let pixel = Boundary.pixel();
+            for i in 0..5 {
+                for j in 0..5 {
+                    let pos = (5 * y + j + 3) * 256 + 5 * x + i + 3;
+                    pixels[pos as usize] = pixel;
+                }
+            }
+        }
     }
 
     fn tick(&mut self, _events: &[Event]) {
