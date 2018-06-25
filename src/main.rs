@@ -7,6 +7,8 @@ use pxl::*;
 use rand::{Rng, thread_rng};
 use std::io::Cursor;
 use byteorder::{NativeEndian, ReadBytesExt};
+use std::f64;
+use std::sync::{Arc, Mutex};
 // use itertools::Itertools;
 
 
@@ -42,24 +44,28 @@ impl TrackPoint {
     fn pixel(self) -> Pixel {
         match self {
             Boundary => Pixel {
-                red: 0,
-                green: 0,
-                blue: 0,
+                red: 0.0,
+                green: 0.0,
+                blue: 0.0,
+                alpha: 1.0,
             },
             End => Pixel {
-                red: 0,
-                green: 255,
-                blue: 0,
+                red: 0.0,
+                green: 1.0,
+                blue: 0.0,
+                alpha: 1.0,
             },
             Beginning => Pixel {
-                red: 255,
-                green: 0,
-                blue: 0,
+                red: 1.0,
+                green: 0.0,
+                blue: 0.0,
+                alpha: 1.0,
             },
             Empty => Pixel {
-                red: 255,
-                green: 255,
-                blue: 255,
+                red: 1.0,
+                green: 1.0,
+                blue: 1.0,
+                alpha: 1.0,
             },
         }
     }
@@ -134,22 +140,26 @@ impl Program for Game {
         }
     }
 
+    fn dimensions(&self) -> (usize, usize) {
+        (506, 506)
+    }
+
     fn render(&mut self, pixels: &mut [Pixel]) {
         for x in 0..50 {
             for y in 0..50 {
                 let pixel = self.track[y * 50 + x].pixel();
-                for i in 0..5 {
-                    for j in 0..5 {
-                        pixels[(5 * y + j + 3) * 256 + 5 * x + i + 3] = pixel;
+                for i in 0..10 {
+                    for j in 0..10 {
+                        pixels[(10 * y + j + 3) * 506 + 10 * x + i + 3] = pixel;
                     }
                 }
             }
         }
         for (x, y) in &self.history {
             let pixel = Boundary.pixel();
-            for i in 0..5 {
-                for j in 0..5 {
-                    let pos = (5 * y + j + 3) * 256 + 5 * x + i + 3;
+            for i in 0..10 {
+                for j in 0..10 {
+                    let pos = (10 * y + j + 3) * 506 + 10 * x + i + 3;
                     pixels[pos as usize] = pixel;
                 }
             }
@@ -198,6 +208,29 @@ impl Program for Game {
             // self.tick = 0;
         }
     }
+
+    fn synthesizer(&self) -> Option<Arc<Mutex<Synthesizer>>> {
+        Some(Arc::new(Mutex::new(Carillon{x: false})))
+    }
+}
+
+
+struct Carillon {
+    x: bool
+}
+
+
+impl Synthesizer for Carillon {
+
+    fn synthesize(&mut self, samples_played: u64, output_buffer: &mut [Sample]) {
+        let mut t = samples_played as f64 / SAMPLES_PER_SECOND as f64;
+        for sample in output_buffer {
+            let power = (t * 440.0 * f64::consts::PI * 2.0).sin() as f32;
+            *sample = Sample{left: power, right: power};
+            t += 1.0 / SAMPLES_PER_SECOND as f64;
+        }
+    }
+
 }
 
 
