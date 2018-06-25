@@ -210,13 +210,32 @@ impl Program for Game {
     }
 
     fn synthesizer(&self) -> Option<Arc<Mutex<Synthesizer>>> {
-        Some(Arc::new(Mutex::new(Carillon{x: false})))
+        let westminster = vec![
+            440.0,
+            493.88,
+            554.37,
+            440.0,
+
+            554.37,
+            493.88,
+            440.0,
+            329.63,
+
+            440.0,
+            493.88,
+            554.37,
+            440.0,
+            440.0,
+            440.0,
+
+        ];
+        Some(Arc::new(Mutex::new(Carillon{note_loop: westminster})))
     }
 }
 
 
 struct Carillon {
-    x: bool
+    note_loop: Vec<f64>,
 }
 
 
@@ -225,7 +244,8 @@ impl Synthesizer for Carillon {
     fn synthesize(&mut self, samples_played: u64, output_buffer: &mut [Sample]) {
         let mut t = samples_played as f64 / SAMPLES_PER_SECOND as f64;
         for sample in output_buffer {
-            let power = (t * 440.0 * f64::consts::PI * 2.0).sin() as f32;
+            let note = self.note_loop[t as usize % self.note_loop.len()];
+            let power = (t * note * f64::consts::PI * 2.0).sin() as f32;
             *sample = Sample{left: power, right: power};
             t += 1.0 / SAMPLES_PER_SECOND as f64;
         }
