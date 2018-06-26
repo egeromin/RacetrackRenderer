@@ -17,7 +17,7 @@ const EPISODE: &[u8] = include_bytes!("../episode.values");
 const QVALS: &[u8] = include_bytes!("../q.values");
 
 
-const TICKS_PER_SECOND: u32 = 60;
+const TICKS_PER_SECOND: u32 = 150;
 // const NUM_EPISODES: usize = EPISODE.len() / 2;
 
 #[derive(Copy, Clone, PartialEq)]
@@ -145,6 +145,20 @@ impl Program for Game {
     }
 
     fn render(&mut self, pixels: &mut [Pixel]) {
+        if self.state.ended {
+            if self.state.success {
+                for pixel in pixels {
+                    *pixel = Pixel{red: 0.0, green: 1.0, blue: 0.0, alpha: 1.0}
+                }
+            }
+            else {
+                for pixel in pixels {
+                    *pixel = Pixel{red: 1.0, green: 0.0, blue: 0.0, alpha: 1.0}
+                }
+            }
+            return;
+        }
+
         for x in 0..50 {
             for y in 0..50 {
                 let pixel = self.track[y * 50 + x].pixel();
@@ -170,13 +184,6 @@ impl Program for Game {
         self.tick += 1;
 
         if self.tick % TICKS_PER_SECOND == 0 {
-            // let (x, y) = EPISODE[2*self.episode_num: 2*self.episode_num+1]
-            // let x = (EPISODE[2 * self.episode_num] - 1) as usize;
-            // let y = (EPISODE[2 * self.episode_num + 1] - 1) as usize;
-
-            // self.track[50 * y + x] = Boundary;
-            //
-
             if self.state.ended {
                 self.state = random_start(&self.start_positions);
                 self.history = vec![];
@@ -188,24 +195,9 @@ impl Program for Game {
                 self.history.push(self.state.position);
             }
 
-            // println!("state: {}, {}", self.state.position.0,
-            //          self.state.position.1);
             if self.state.ended {
                 println!("Ended with outcome {}", self.state.success);
             }
-            
-            // self.track[random_start(&self.start_positions)] = Boundary;
-            // self.episode_num = (self.episode_num + 1) % (EPISODE.len() / 2);
-
-            // if self.episode_num == 0 {
-            //     self.track = RACETRACK
-            //         .iter()
-            //         .cloned()
-            //         .map(TrackPoint::from_byte)
-            //         .collect();
-            // }
-
-            // self.tick = 0;
         }
     }
 
